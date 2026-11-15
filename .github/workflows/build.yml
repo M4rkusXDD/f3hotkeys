@@ -1,0 +1,296 @@
+name: build
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.8.2
+      - name: Create project files
+        run: |
+          mkdir proj && cd proj
+          echo CC0-1.0 > LICENSE
+          cat > settings.gradle <<'EOF_FILE'
+          pluginManagement {
+          	repositories {
+          		maven {
+          			name = 'Fabric'
+          			url = 'https://maven.fabricmc.net/'
+          		}
+          		mavenCentral()
+          		gradlePluginPortal()
+          	}
+          }
+
+          // Should match your modid
+          rootProject.name = 'f3hotkeys'
+          EOF_FILE
+          cat > build.gradle <<'EOF_FILE'
+          plugins {
+          	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}"
+          	id 'maven-publish'
+          }
+
+          repositories {
+          	// Add repositories to retrieve artifacts from in here.
+          	// You should only use this when depending on other mods because
+          	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
+          	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+          	// for more information about repositories.
+          }
+
+          loom {
+          	splitEnvironmentSourceSets()
+
+          	mods {
+          		"f3hotkeys" {
+          			sourceSet sourceSets.main
+          			sourceSet sourceSets.client
+          		}
+          	}
+          }
+
+          dependencies {
+          	// To change the versions see the gradle.properties file
+          	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+          	mappings loom.officialMojangMappings()
+          	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+          	// Fabric API. This is technically optional, but you probably want it anyway.
+          	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+          }
+
+          processResources {
+          	def version = project.version
+          	inputs.property "version", version
+
+          	filesMatching("fabric.mod.json") {
+          		expand "version": version
+          	}
+          }
+
+          tasks.withType(JavaCompile).configureEach {
+          	it.options.release = 21
+          }
+
+          java {
+          	// Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
+          	// if it is present.
+          	// If you remove this line, sources will not be generated.
+          	withSourcesJar()
+
+          	sourceCompatibility = JavaVersion.VERSION_21
+          	targetCompatibility = JavaVersion.VERSION_21
+          }
+
+          jar {
+          	def projectName = project.name
+          	inputs.property "projectName", projectName
+
+          	from("LICENSE") {
+          		rename { "${it}_$projectName"}
+          	}
+          }
+
+          // configure the maven publication
+          publishing {
+          	publications {
+          		create("mavenJava", MavenPublication) {
+          			from components.java
+          		}
+          	}
+
+          	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
+          	repositories {
+          		// Add repositories to publish to here.
+          		// Notice: This block does NOT have the same function as the block in the top level.
+          		// The repositories here will be used for publishing your artifact, not for
+          		// retrieving dependencies.
+          	}
+          }
+          EOF_FILE
+          cat > gradle.properties <<'EOF_FILE'
+          # Done to increase the memory available to gradle.
+          org.gradle.jvmargs=-Xmx1G
+          org.gradle.parallel=true
+          org.gradle.configuration-cache=true
+
+          # Fabric Properties
+          # check these on https://fabricmc.net/develop
+          minecraft_version=1.21.11
+          loader_version=0.20.1
+          loom_version=1.19-SNAPSHOT
+
+          # Mod Properties
+          version=1.0.0
+          group=com.f3hotkeys
+
+          # Dependencies
+          fabric_api_version=0.141.6+1.21.11
+          EOF_FILE
+          mkdir -p src/main/resources
+          cat > src/main/resources/fabric.mod.json <<'EOF_FILE'
+          {
+          	"schemaVersion": 1,
+          	"id": "f3hotkeys",
+          	"version": "${version}",
+          	"name": "F3 Hotkeys",
+          	"description": "Bind any F3+key debug shortcut to a single key of your choice.",
+          	"authors": ["Markus"],
+          	"license": "CC0-1.0",
+          	"environment": "client",
+          	"entrypoints": {
+          		"client": ["com.f3hotkeys.F3HotkeysClient"]
+          	},
+          	"mixins": [
+          		{
+          			"config": "f3hotkeys.client.mixins.json",
+          			"environment": "client"
+          		}
+          	],
+          	"depends": {
+          		"fabricloader": ">=0.20.1",
+          		"minecraft": "~1.21.11",
+          		"java": ">=21",
+          		"fabric-api": "*"
+          	}
+          }
+          EOF_FILE
+          mkdir -p src/client/resources
+          cat > src/client/resources/f3hotkeys.client.mixins.json <<'EOF_FILE'
+          {
+          	"required": true,
+          	"package": "com.f3hotkeys.mixin",
+          	"compatibilityLevel": "JAVA_21",
+          	"client": [
+          		"KeyboardHandlerInvoker"
+          	],
+          	"injectors": {
+          		"defaultRequire": 1
+          	}
+          }
+          EOF_FILE
+          mkdir -p src/client/resources/assets/f3hotkeys/lang
+          cat > src/client/resources/assets/f3hotkeys/lang/en_us.json <<'EOF_FILE'
+          {
+          	"key.category.f3hotkeys.main": "F3 Hotkeys",
+          	"key.f3hotkeys.reload_chunks": "Reload Chunks (F3+A)",
+          	"key.f3hotkeys.hitboxes": "Show Hitboxes (F3+B)",
+          	"key.f3hotkeys.copy_location": "Copy Location (F3+C)",
+          	"key.f3hotkeys.clear_chat": "Clear Chat (F3+D)",
+          	"key.f3hotkeys.render_distance": "Cycle Render Distance (F3+F)",
+          	"key.f3hotkeys.chunk_borders": "Chunk Borders (F3+G)",
+          	"key.f3hotkeys.advanced_tooltips": "Advanced Tooltips (F3+H)",
+          	"key.f3hotkeys.copy_targeted_data": "Copy Targeted Data (F3+I)",
+          	"key.f3hotkeys.profiler": "Profiler (F3+L)",
+          	"key.f3hotkeys.cycle_gamemode": "Cycle Gamemode (F3+N)",
+          	"key.f3hotkeys.pause_on_lost_focus": "Pause on Lost Focus (F3+P)",
+          	"key.f3hotkeys.help": "Show Help (F3+Q)",
+          	"key.f3hotkeys.dump_textures": "Dump Textures (F3+S)",
+          	"key.f3hotkeys.reload_resource_packs": "Reload Resource Packs (F3+T)",
+          	"key.f3hotkeys.gamemode_switcher": "Gamemode Switcher (F3+F4)"
+          }
+          EOF_FILE
+          mkdir -p src/client/java/com/f3hotkeys
+          cat > src/client/java/com/f3hotkeys/F3HotkeysClient.java <<'EOF_FILE'
+          package com.f3hotkeys;
+
+          import com.f3hotkeys.mixin.KeyboardHandlerInvoker;
+          import com.mojang.blaze3d.platform.InputConstants;
+          import java.util.ArrayList;
+          import java.util.List;
+          import net.fabricmc.api.ClientModInitializer;
+          import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+          import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+          import net.minecraft.client.KeyMapping;
+          import net.minecraft.client.Minecraft;
+          import net.minecraft.client.input.KeyEvent;
+          import net.minecraft.resources.Identifier;
+          import org.lwjgl.glfw.GLFW;
+
+          public class F3HotkeysClient implements ClientModInitializer {
+          	public static final String MOD_ID = "f3hotkeys";
+
+          	/** One entry per F3 shortcut: the lang id, and the key vanilla pairs with F3. */
+          	private record Action(String id, int vanillaKey, KeyMapping mapping) {}
+
+          	private static final List<Action> ACTIONS = new ArrayList<>();
+
+          	@Override
+          	public void onInitializeClient() {
+          		KeyMapping.Category category =
+          			KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "main"));
+
+          		// Vanilla defaults stay untouched: F3 + key still works as normal.
+          		add(category, "reload_chunks", GLFW.GLFW_KEY_A);
+          		add(category, "hitboxes", GLFW.GLFW_KEY_B);
+          		add(category, "copy_location", GLFW.GLFW_KEY_C);
+          		add(category, "clear_chat", GLFW.GLFW_KEY_D);
+          		add(category, "render_distance", GLFW.GLFW_KEY_F);
+          		add(category, "chunk_borders", GLFW.GLFW_KEY_G);
+          		add(category, "advanced_tooltips", GLFW.GLFW_KEY_H);
+          		add(category, "copy_targeted_data", GLFW.GLFW_KEY_I);
+          		add(category, "profiler", GLFW.GLFW_KEY_L);
+          		add(category, "cycle_gamemode", GLFW.GLFW_KEY_N);
+          		add(category, "pause_on_lost_focus", GLFW.GLFW_KEY_P);
+          		add(category, "help", GLFW.GLFW_KEY_Q);
+          		add(category, "dump_textures", GLFW.GLFW_KEY_S);
+          		add(category, "reload_resource_packs", GLFW.GLFW_KEY_T);
+          		add(category, "gamemode_switcher", GLFW.GLFW_KEY_F4);
+
+          		ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+          	}
+
+          	private static void add(KeyMapping.Category category, String id, int vanillaKey) {
+          		// Unbound by default. Bind it in Options > Controls > Key Binds > "F3 Hotkeys".
+          		KeyMapping mapping = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+          			"key." + MOD_ID + "." + id,
+          			InputConstants.Type.KEYSYM,
+          			GLFW.GLFW_KEY_UNKNOWN,
+          			category));
+          		ACTIONS.add(new Action(id, vanillaKey, mapping));
+          	}
+
+          	private void onTick(Minecraft client) {
+          		if (client.player == null || client.screen != null) {
+          			return;
+          		}
+          		for (Action action : ACTIONS) {
+          			while (action.mapping().consumeClick()) {
+          				int scancode = GLFW.glfwGetKeyScancode(action.vanillaKey());
+          				KeyEvent fake = new KeyEvent(action.vanillaKey(), scancode, 0);
+          				((KeyboardHandlerInvoker) client.keyboardHandler).f3hotkeys$handleDebugKeys(fake);
+          			}
+          		}
+          	}
+          }
+          EOF_FILE
+          mkdir -p src/client/java/com/f3hotkeys/mixin
+          cat > src/client/java/com/f3hotkeys/mixin/KeyboardHandlerInvoker.java <<'EOF_FILE'
+          package com.f3hotkeys.mixin;
+
+          import net.minecraft.client.KeyboardHandler;
+          import net.minecraft.client.input.KeyEvent;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.gen.Invoker;
+
+          @Mixin(KeyboardHandler.class)
+          public interface KeyboardHandlerInvoker {
+          	/** Runs the vanilla F3+key action for the given key, exactly like pressing F3 + that key. */
+          	@Invoker("handleDebugKeys")
+          	boolean f3hotkeys$handleDebugKeys(KeyEvent event);
+          }
+          EOF_FILE
+      - name: Build
+        run: cd proj && gradle build --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: f3hotkeys-jar
+          path: proj/build/libs/*.jar
