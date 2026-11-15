@@ -195,7 +195,10 @@ jobs:
           	"key.f3hotkeys.help": "Show Help (F3+Q)",
           	"key.f3hotkeys.dump_textures": "Dump Textures (F3+S)",
           	"key.f3hotkeys.reload_resource_packs": "Reload Resource Packs (F3+T)",
-          	"key.f3hotkeys.gamemode_switcher": "Gamemode Switcher (F3+F4)"
+          	"key.f3hotkeys.profiling_chart": "Profiling Pie Chart (F3+1)",
+          	"key.f3hotkeys.debug_chart_2": "Debug Chart (F3+2)",
+          	"key.f3hotkeys.debug_chart_3": "Debug Chart (F3+3)",
+          	"key.f3hotkeys.gamemode_switcher": "Cycle Gamemode (like F3+F4)"
           }
           EOF_FILE
           mkdir -p src/client/java/com/f3hotkeys
@@ -213,6 +216,7 @@ jobs:
           import net.minecraft.client.Minecraft;
           import net.minecraft.client.input.KeyEvent;
           import net.minecraft.resources.Identifier;
+          import net.minecraft.world.level.GameType;
           import org.lwjgl.glfw.GLFW;
 
           public class F3HotkeysClient implements ClientModInitializer {
@@ -222,6 +226,7 @@ jobs:
           	private record Action(String id, int vanillaKey, KeyMapping mapping) {}
 
           	private static final List<Action> ACTIONS = new ArrayList<>();
+          	private static KeyMapping gamemodeCycle;
 
           	@Override
           	public void onInitializeClient() {
@@ -243,7 +248,16 @@ jobs:
           		add(category, "help", GLFW.GLFW_KEY_Q);
           		add(category, "dump_textures", GLFW.GLFW_KEY_S);
           		add(category, "reload_resource_packs", GLFW.GLFW_KEY_T);
-          		add(category, "gamemode_switcher", GLFW.GLFW_KEY_F4);
+          		add(category, "profiling_chart", GLFW.GLFW_KEY_1);
+          		add(category, "debug_chart_2", GLFW.GLFW_KEY_2);
+          		add(category, "debug_chart_3", GLFW.GLFW_KEY_3);
+
+          		// Single-key gamemode cycling (survival, creative, adventure, spectator).
+          		gamemodeCycle = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+          			"key." + MOD_ID + ".gamemode_switcher",
+          			InputConstants.Type.KEYSYM,
+          			GLFW.GLFW_KEY_UNKNOWN,
+          			category));
 
           		ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
           	}
@@ -261,6 +275,11 @@ jobs:
           	private void onTick(Minecraft client) {
           		if (client.player == null || client.screen != null) {
           			return;
+          		}
+          		while (gamemodeCycle.consumeClick()) {
+          			GameType[] modes = GameType.values();
+          			GameType next = modes[(client.gameMode.getPlayerMode().ordinal() + 1) % modes.length];
+          			client.player.connection.sendUnsignedCommand("gamemode " + next.getName());
           		}
           		for (Action action : ACTIONS) {
           			while (action.mapping().consumeClick()) {
