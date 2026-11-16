@@ -279,7 +279,7 @@ jobs:
           		while (gamemodeCycle.consumeClick()) {
           			GameType[] modes = GameType.values();
           			GameType next = modes[(client.gameMode.getPlayerMode().ordinal() + 1) % modes.length];
-          			client.player.connection.sendUnsignedCommand("gamemode " + next.getName());
+          			client.player.connection.sendCommand("gamemode " + next.getName());
           		}
           		for (Action action : ACTIONS) {
           			while (action.mapping().consumeClick()) {
